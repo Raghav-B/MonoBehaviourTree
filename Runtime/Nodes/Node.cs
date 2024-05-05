@@ -46,6 +46,7 @@ namespace MBT
         public virtual void OnEnter() {}
         public abstract NodeResult Execute();
         public virtual void OnExit() {}
+        public virtual void OnExit(bool aborted) {}
         public virtual void OnDisallowInterrupt() {}
 
         public virtual void OnBehaviourTreeAbort() {}

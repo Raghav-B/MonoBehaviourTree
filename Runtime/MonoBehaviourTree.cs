@@ -226,7 +226,7 @@ namespace MBT
                 }
                 // If node is running (on exec stack) then call exit
                 if (n.status == Status.Running) {
-                    n.OnExit();
+                    n.OnExit(aborted);
                     // IMPROVEMENT: Abort event can be added or abort param onExit
                 }
                 n.status = Status.Ready;
