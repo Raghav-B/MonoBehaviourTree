@@ -561,11 +561,11 @@ namespace MBTEditor
                 Node node = currentNodes[i];
                 
                 // PATCH since title property was changed...
-                if (String.IsNullOrEmpty(node.title)) {
+                if (String.IsNullOrEmpty(node.Title)) {
                     Type nodeType = node.GetType();
                     MBTNode nodeMeta = nodeType.GetCustomAttribute<MBTNode>();
                     string[] path = nodeMeta.name.Split('/');
-                    node.title = path[path.Length - 1];
+                    node.Title = path[path.Length - 1];
                 }
                 
                 Rect targetRect = node.GetRect();
@@ -576,11 +576,11 @@ namespace MBTEditor
                     GUILayout.BeginVertical(_nodeContentBoxStyle);
                     if (node.breakpoint)
                     {
-                        GUILayout.Label(node.title, _nodeBreakpointLabelStyle);
+                        GUILayout.Label(node.Title, _nodeBreakpointLabelStyle);
                     }
                     else
                     {
-                        GUILayout.Label(node.title, _nodeLabelStyle);  
+                        GUILayout.Label(node.Title, _nodeLabelStyle);  
                     }
                     GUILayout.EndVertical();
                     if (Event.current.type == EventType.Repaint)
@@ -691,7 +691,7 @@ namespace MBTEditor
             }
             Undo.SetCurrentGroupName("Create Node");
             Node node = (Node)Undo.AddComponent(currentMBT.gameObject, item.classType);
-            node.title = item.name;
+            node.Title = item.name;
             node.hideFlags = HideFlags.HideInInspector;
             node.SetRectPos(nodeDropdownTargetPosition - new Vector2(node.GetRect().width/2, 0));
             UpdateSelection();

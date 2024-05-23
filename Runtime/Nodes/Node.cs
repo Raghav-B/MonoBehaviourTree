@@ -10,12 +10,13 @@ namespace MBT
         public const float NODE_DEFAULT_WIDTH = 160f;
         private float repaintHeight = 0f;
 
-        private string _title;
-        public string title {
-            get { return _title; }
+        [SerializeField]
+        private string title;
+        public string Title {
+            get { return title; }
             set 
             {
-                _title = value;
+                title = value;
                 repaintHeight = 0f;
             }
         }

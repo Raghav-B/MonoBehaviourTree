@@ -163,7 +163,7 @@ namespace MBT
                         {
                             Debug.Break();
                             UnityEditor.Selection.activeGameObject = this.gameObject;
-                            Debug.Log("MBT Breakpoint: " + child.title, this);
+                            Debug.Log("MBT Breakpoint: " + child.Title, this);
                             LastTick = Time.time;
                             _TickMarker.End();
                             return;
