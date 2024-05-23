@@ -611,8 +611,13 @@ namespace MBTEditor
             genericMenu.AddItem(new GUIContent("Breakpoint"), node.breakpoint, () => ToggleNodeBreakpoint(node));
             genericMenu.AddItem(new GUIContent("Duplicate"), false, () => DuplicateNode(node));
             genericMenu.AddItem(new GUIContent("Disconnect Children"), false, () => DisconnectNodeChildren(node)); 
-            genericMenu.AddItem(new GUIContent("Disconnect Parent"), false, () => DisconnectNodeParent(node)); 
+            genericMenu.AddItem(new GUIContent("Disconnect Parent"), false, () => DisconnectNodeParent(node));
+            genericMenu.AddItem(new GUIContent("Copy"), false, () => CopyNode(node));
+            if (copiedNode != null) {
+                genericMenu.AddItem(new GUIContent("Paste"), false, () => PasteNode());
+            }
             genericMenu.AddItem(new GUIContent("Delete Node"), false, () => DeleteNode(node)); 
+            
             genericMenu.ShowAsContext();
         }
 
@@ -644,6 +649,21 @@ namespace MBTEditor
             // Toggle breakpoint flag
             // Undo.RecordObject(node, "Toggle Breakpoint");
             node.breakpoint = !node.breakpoint;
+        }
+
+        private Node copiedNode;
+        private void CopyNode(Node node)
+        {
+            copiedNode = node;
+        }
+
+        private void PasteNode()
+        {
+            if (copiedNode == null) {
+                return;
+            }
+            DuplicateNode(copiedNode);
+            copiedNode = null;
         }
 
         private void DeleteNode(Node node)
