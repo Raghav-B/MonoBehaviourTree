@@ -23,7 +23,7 @@ namespace MBT
         [HideInInspector]
         public static float zoomScale = 1f;
         [HideInInspector]
-        private Rect rect = new Rect(0, 0, NODE_DEFAULT_WIDTH, 50);
+        public Rect rect = new Rect(0, 0, NODE_DEFAULT_WIDTH, 50);
         [HideInInspector]
         public Node parent;
         [HideInInspector]
