@@ -12,8 +12,8 @@ namespace MBTEditor
     {
         private MonoBehaviourTree currentMBT;
         private Editor currentMBTEditor;
-        private Node[] currentNodes;
-        private Node selectedNode;
+        private Node[] currentNodes; // List of all nodes in the current window
+        private Node selectedNode; // This is the latest node that was selected
         private bool nodeMoved = false;
         private Vector2 workspaceOffset;
         private NodeHandle currentHandle;
@@ -51,6 +51,7 @@ namespace MBTEditor
         private bool isSelecting = false;
         private Event selectStartEvent = null;
         private readonly Color _selectBoxColor = new Color(0.16f, 0.19f, 0.5f, 0.2f);
+        private Dictionary<int, Node> selectedNodes = new Dictionary<int, Node>();
 
         private void OnEnable()
         {
@@ -159,7 +160,7 @@ namespace MBTEditor
                 Handles.DrawSolidRectangleWithOutline(selectBox, _selectBoxColor, Color.gray);
                 Handles.EndGUI();
 
-                List<Node> nodesInBox = UpdateSelectionBoxNodes(selectBox);
+                UpdateSelectionBoxNodes(selectBox);
             }
         }
 
@@ -344,7 +345,7 @@ namespace MBTEditor
             switch (e.type)
             {
                 case EventType.MouseDown:
-                    if (e.button == 0) {
+                    if (e.button == 0) { // Left click
                         // Reset flag
                         nodeMoved = false;
                         // Frist check if any node handle was clicked
@@ -355,28 +356,33 @@ namespace MBTEditor
                             e.Use();
                             break;
                         }
-                        Node node = FindNode(e.mousePosition);
+                        int index = FindNodeIndex(e.mousePosition);
                         // Select node if contains point
-                        if (node != null) {
-                            DeselectNode();
-                            SelectNode(node);
+                        if (index != -1) {
+                            if (selectedNodes.Count <= 1) {
+                                // Only deselect nodes if multiple nodes aren't selected
+                                DeselectAllNodes();
+                            }
+                            SelectNodeIndex(index);
+                            Node node = currentNodes[index];
                             if (e.clickCount == 2 && node is SubTree) {
                                 SubTree subTree = node as SubTree;
                                 if (subTree.tree != null) {
                                     Selection.activeGameObject = subTree.tree.gameObject;
                                 }
                             }
-                        } else {
-                            DeselectNode();
+                        } else { // If an empty space was clicked
+                            DeselectAllNodes();
                         }
                         e.Use();
-                    } else if (e.button == 1) {
+
+                    } else if (e.button == 1) { // Right click
                         Node node = FindNode(e.mousePosition);
                         // Open proper context menu
                         if (node != null) {
                             OpenNodeMenu(e.mousePosition, node);
                         } else {
-                            DeselectNode();
+                            DeselectAllNodes();
                             OpenNodeFinder(new Rect(e.mousePosition.x, e.mousePosition.y, 1, 1));
                         }
                         e.Use();
@@ -391,19 +397,16 @@ namespace MBTEditor
                         
                         if (currentHandle != null) {
                             // Let PaintConnections draw lines
-                        } else if (selectedNode != null) {
-                            Undo.RecordObject(selectedNode, "Move Node");
-                            selectedNode.ShiftRectPos(Event.current.delta * zoomScaleInv);
-                            // Move whole branch when Ctrl is pressed
-                            if (e.control) {
-                                List<Node> movedNodes = selectedNode.GetAllSuccessors();
-                                for (int i = 0; i < movedNodes.Count; i++)
-                                {
-                                    Undo.RecordObject(movedNodes[i], "Move Node");
-                                    movedNodes[i].ShiftRectPos(Event.current.delta * zoomScaleInv);
-                                }
+                        
+                        } else if (selectedNodes.Count > 0) { // If we are dragging and some nodes were selected                            
+                            // Move all selected nodes
+                            foreach (var keyVal in selectedNodes) {
+                                Node node = keyVal.Value;
+                                Undo.RecordObject(node, "Move Node");
+                                node.ShiftRectPos(Event.current.delta * zoomScaleInv);
                             }
                             nodeMoved = true;
+
                         } else {
                             // Multiple selection logic
                             // Let paint select box draw
@@ -529,6 +532,11 @@ namespace MBTEditor
             }
         }
 
+        private void SelectNodeIndex(int index) {
+            selectedNodes.TryAdd(index, currentNodes[index]);
+            SelectNode(currentNodes[index]);
+        }
+
         private void SelectNode(Node node)
         {
             currentMBT.selectedEditorNode = node;
@@ -536,6 +544,11 @@ namespace MBTEditor
             node.selected = true;
             selectedNode = node;
             GUI.changed = true;
+        }
+
+        private void DeselectNodeIndex(int index) {
+            selectedNodes.Remove(index);
+            DeselectNode(currentNodes[index]);
         }
 
         private void DeselectNode(Node node)
@@ -547,19 +560,28 @@ namespace MBTEditor
             GUI.changed = true;
         }
 
-        private void DeselectNode()
+        private void DeselectAllNodes()
         {
             currentMBT.selectedEditorNode = null;
             currentMBTEditor.Repaint();
             for (int i = 0; i < currentNodes.Length; i++)
             {
                 currentNodes[i].selected = false;
+                selectedNodes.Remove(i);
             }
-            selectedNode = null;
             GUI.changed = true;
         }
 
         private Node FindNode(Vector2 mousePosition)
+        {
+            int index = FindNodeIndex(mousePosition);
+            if (index == -1) {
+                return null;
+            }
+            return currentNodes[index];
+        }
+
+        private int FindNodeIndex(Vector2 mousePosition) 
         {
             for (int i = 0; i < currentNodes.Length; i++)
             {
@@ -568,14 +590,13 @@ namespace MBTEditor
                 target.position *= zoomScale;
                 target.position += workspaceOffset;
                 if (target.Contains(mousePosition)) {
-                    return currentNodes[i];
+                    return i;
                 }
             }
-            return null;
+            return -1;
         }
 
-        private List<Node> UpdateSelectionBoxNodes(Rect selectBox) {
-            List<Node> nodesInBox = new List<Node>();
+        private void UpdateSelectionBoxNodes(Rect selectBox) {
             for (int i = 0; i < currentNodes.Length; i++)
             {
                 // Get correct position of node with offset
@@ -583,13 +604,11 @@ namespace MBTEditor
                 target.position *= zoomScale;
                 target.position += workspaceOffset;
                 if (selectBox.Overlaps(target, allowInverse: true)) {
-                    // nodesInBox.Add(currentNodes[i]);
-                    SelectNode(currentNodes[i]);
+                    SelectNodeIndex(i);
                 } else {
-                    DeselectNode(currentNodes[i]);
+                    DeselectNodeIndex(i);
                 }
             }
-            return nodesInBox;
         }
 
         private NodeHandle FindHandle(Vector2 mousePosition)
@@ -792,7 +811,7 @@ namespace MBTEditor
             if (currentMBT == null) {
                 return;
             }
-            DeselectNode();
+            DeselectAllNodes();
             // Disconnect all children and parent
             Undo.SetCurrentGroupName("Delete Node");
             DisconnectNodeChildren(node);
