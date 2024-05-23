@@ -8,10 +8,21 @@ namespace MBT
     public abstract class Node : MonoBehaviour
     {
         public const float NODE_DEFAULT_WIDTH = 160f;
+        private float repaintHeight = 0f;
 
-        public string title;
+        private string _title;
+        public string title {
+            get { return _title; }
+            set 
+            {
+                _title = value;
+                repaintHeight = 0f;
+            }
+        }
         [HideInInspector]
-        public Rect rect = new Rect(0, 0, NODE_DEFAULT_WIDTH, 50);
+        public static float zoomScale = 1f;
+        [HideInInspector]
+        private Rect rect = new Rect(0, 0, NODE_DEFAULT_WIDTH, 50);
         [HideInInspector]
         public Node parent;
         [HideInInspector]
@@ -111,6 +122,43 @@ namespace MBT
             }
             #endif
             return true;
+        }
+
+        public virtual Rect GetRect() 
+        {
+            // rect.height = NODE_DEFAULT_HEIGHT * zoomScale;
+            rect.width = NODE_DEFAULT_WIDTH * zoomScale;
+            if (repaintHeight > 0f) 
+            {
+                rect.height = repaintHeight * zoomScale;
+            }
+            // rect.position = new Vector2(
+            //     rect.position.x * zoomScale,
+            //     rect.position.y * zoomScale
+            // );
+            return rect;
+            // return new Rect(0, 0, NODE_DEFAULT_WIDTH * zoomScale, NODE_DEFAULT_HEIGHT * zoomScale);
+        }
+
+        public virtual void SetRectPos(Vector2 pos) 
+        {
+            rect.position = pos;
+        }
+
+        public virtual void ShiftRectPos(Vector2 delta) 
+        {
+            rect.position += delta;
+        }
+
+        public virtual void SetRectHeight(float height) 
+        {
+            if (repaintHeight <= 0f) 
+            {
+                // Repaint height was not set, we should fix it
+                // All future heights will be based off of this
+                rect.height = height;
+                repaintHeight = height;
+            }
         }
     }
 

@@ -1,8 +1,10 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using UnityEditor.IMGUI.Controls;
 using MBT;
+using System;
+using System.Reflection;
 
 namespace MBTEditor
 {    
@@ -34,6 +36,17 @@ namespace MBTEditor
         private GUIStyle _nodeContentBoxStyle;
         private GUIStyle _nodeLabelStyle;
         private GUIStyle _nodeBreakpointLabelStyle;
+
+        private const float maxZoom = 1.5f;
+        private const float minZoom = 0.5f;
+        private float zoomScale = 1f;
+        private float zoomScaleInv 
+        {
+            get 
+            {
+                return (1 - (zoomScale - minZoom)) + minZoom;
+            }
+        }
 
         private void OnEnable()
         {
@@ -80,6 +93,8 @@ namespace MBTEditor
             // Node label when breakpoint is set to true
             _nodeBreakpointLabelStyle = new GUIStyle(_nodeLabelStyle);
             _nodeBreakpointLabelStyle.normal.textColor = new Color(1f, 0.35f, 0.18f);
+
+            zoomScale = 1f;
         }
     
         private void OnDisable()
@@ -137,11 +152,16 @@ namespace MBTEditor
             for (int i = 0; i < currentNodes.Length; i++)
             {
                 Node n = currentNodes[i];
-                Vector3 p1 = GetBottomHandlePosition(n.rect) + workspaceOffset;
+                Rect targetRect = n.GetRect();
+                targetRect.position *= zoomScale;
+                Vector3 p1 = GetBottomHandlePosition(targetRect) + workspaceOffset;
+                
                 for (int j = 0; j < n.children.Count; j++)
                 {
                     Handles.BeginGUI();
-                    Vector3 p2 = GetTopHandlePosition(n.children[j].rect) + workspaceOffset;
+                    targetRect = n.children[j].GetRect();
+                    targetRect.position *= zoomScale;
+                    Vector3 p2 = GetTopHandlePosition(targetRect) + workspaceOffset;
                     Handles.DrawBezier(p1, p2, p1, p2, new Color(0.3f, 0.36f, 0.5f), null, 4f);
                     Handles.EndGUI();   
                 }
@@ -197,8 +217,11 @@ namespace MBTEditor
                 }
             }
             if (rootNode != null) {
-                workspaceOffset = -rootNode.rect.center + new Vector2(this.position.width/2, this.position.height/2);
+                workspaceOffset = -rootNode.GetRect().center + new Vector2(this.position.width/2, this.position.height/2);
             }
+            zoomScale = 1f;
+            UpdateZoom();
+            GUI.changed = true;
         }
 
         private void OnPlayModeStateChanged(PlayModeStateChange state)
@@ -341,14 +364,14 @@ namespace MBTEditor
                             // Let PaintConnections draw lines
                         } else if (selectedNode != null) {
                             Undo.RecordObject(selectedNode, "Move Node");
-                            selectedNode.rect.position += Event.current.delta;
+                            selectedNode.ShiftRectPos(Event.current.delta * zoomScaleInv);
                             // Move whole branch when Ctrl is pressed
                             if (e.control) {
                                 List<Node> movedNodes = selectedNode.GetAllSuccessors();
                                 for (int i = 0; i < movedNodes.Count; i++)
                                 {
                                     Undo.RecordObject(movedNodes[i], "Move Node");
-                                    movedNodes[i].rect.position += Event.current.delta;
+                                    movedNodes[i].ShiftRectPos(Event.current.delta * zoomScaleInv);
                                 }
                             }
                             nodeMoved = true;
@@ -369,14 +392,14 @@ namespace MBTEditor
                         if (snapNodesToGrid)
                         {
                             Undo.RecordObject(selectedNode, "Move Node");
-                            selectedNode.rect.position = SnapPositionToGrid(selectedNode.rect.position);
+                            selectedNode.SetRectPos(SnapPositionToGrid(selectedNode.GetRect().position));
                             // When control is pressed snap successors too
                             if (e.control) {
                                 List<Node> movedNodes = selectedNode.GetAllSuccessors();
                                 for (int i = 0; i < movedNodes.Count; i++)
                                 {
                                     Undo.RecordObject(movedNodes[i], "Move Node");
-                                    movedNodes[i].rect.position = SnapPositionToGrid(movedNodes[i].rect.position);
+                                    movedNodes[i].SetRectPos(SnapPositionToGrid(movedNodes[i].GetRect().position));
                                 }
                             }
                         }
@@ -391,7 +414,29 @@ namespace MBTEditor
                     currentHandle = null;
                     GUI.changed = true;
                     break;
+                case EventType.ScrollWheel:
+                    // Negative is zooming in, positive is zooming out. On my mouse, they seem
+                    // to increment by 3 each time
+                    zoomScale -= e.delta.y / 100;
+                    zoomScale = Mathf.Max(minZoom, Mathf.Min(maxZoom, zoomScale));
+                    UpdateZoom();
+                    GUI.changed = true;
+                    break;
             }
+        }
+
+        void UpdateZoom()
+        {
+            Node.zoomScale = zoomScale;
+            UpdateFontSize();
+        }
+
+        void UpdateFontSize() 
+        {
+            float zoomLerp = (zoomScale - minZoom) / (maxZoom - minZoom);
+            int newFontSize = Mathf.RoundToInt(Mathf.Lerp(4, 18, zoomLerp));
+            _nodeLabelStyle.fontSize = newFontSize;
+            _nodeBreakpointLabelStyle.fontSize = newFontSize;
         }
 
         Vector2 SnapPositionToGrid(Vector2 position)
@@ -473,7 +518,8 @@ namespace MBTEditor
             for (int i = 0; i < currentNodes.Length; i++)
             {
                 // Get correct position of node with offset
-                Rect target = currentNodes[i].rect;
+                Rect target = currentNodes[i].GetRect();
+                target.position *= zoomScale;
                 target.position += workspaceOffset;
                 if (target.Contains(mousePosition)) {
                     return currentNodes[i];
@@ -488,7 +534,8 @@ namespace MBTEditor
             {
                 Node node = currentNodes[i];
                 // Get correct position of node with offset
-                Rect targetRect = node.rect;
+                Rect targetRect = node.GetRect();
+                targetRect.position *= zoomScale;
                 targetRect.position += workspaceOffset;
 
                 if (node is IChildrenNode) {
@@ -512,7 +559,17 @@ namespace MBTEditor
             for (int i = currentNodes.Length - 1; i >= 0 ; i--)
             {
                 Node node = currentNodes[i];
-                Rect targetRect = node.rect;
+                
+                // PATCH since title property was changed...
+                if (String.IsNullOrEmpty(node.title)) {
+                    Type nodeType = node.GetType();
+                    MBTNode nodeMeta = nodeType.GetCustomAttribute<MBTNode>();
+                    string[] path = nodeMeta.name.Split('/');
+                    node.title = path[path.Length - 1];
+                }
+                
+                Rect targetRect = node.GetRect();
+                targetRect.position *= zoomScale;
                 targetRect.position += workspaceOffset;
                 // Draw node content
                 GUILayout.BeginArea(targetRect, GetNodeStyle(node));
@@ -528,7 +585,7 @@ namespace MBTEditor
                     GUILayout.EndVertical();
                     if (Event.current.type == EventType.Repaint)
                     {
-                        node.rect.height = GUILayoutUtility.GetLastRect().height;
+                        node.SetRectHeight(GUILayoutUtility.GetLastRect().height);
                     }
                 GUILayout.EndArea();
 
@@ -636,7 +693,7 @@ namespace MBTEditor
             Node node = (Node)Undo.AddComponent(currentMBT.gameObject, item.classType);
             node.title = item.name;
             node.hideFlags = HideFlags.HideInInspector;
-            node.rect.position = nodeDropdownTargetPosition - new Vector2(node.rect.width/2, 0);
+            node.SetRectPos(nodeDropdownTargetPosition - new Vector2(node.GetRect().width/2, 0));
             UpdateSelection();
             if (dropdownHandleCache != null) {
                 // Add additonal offset (3,3) to be sure that point is inside rect
@@ -719,7 +776,7 @@ namespace MBTEditor
             EditorUtility.CopySerialized(contextNode, node);
             // Set flags anyway to ensure it is not visible in inspector
             node.hideFlags = HideFlags.HideInInspector;
-            node.rect.position = contextNode.rect.position + new Vector2(20, 20);
+            node.SetRectPos(contextNode.GetRect().position + new Vector2(20, 20));
             // Remove all connections or graph gonna break
             node.parent = null;
             node.children.Clear();
@@ -739,8 +796,8 @@ namespace MBTEditor
             Handles.DrawSolidRectangleWithOutline(new Rect(0, 0, position.width, position.height), _editorBackgroundColor, Color.gray);
             Handles.EndGUI();
             // Grid lines
-            DrawBackgroundGrid(20, 0.1f, new Color(0.3f, 0.36f, 0.5f));
-            DrawBackgroundGrid(100, 0.2f, new Color(0.3f, 0.36f, 0.5f));
+            DrawBackgroundGrid(20 * zoomScale, 0.1f, new Color(0.3f, 0.36f, 0.5f));
+            DrawBackgroundGrid(100 * zoomScale, 0.2f, new Color(0.3f, 0.36f, 0.5f));
         }
 
         /// Method copied from https://gram.gs/gramlog/creating-node-based-editor-unity/
