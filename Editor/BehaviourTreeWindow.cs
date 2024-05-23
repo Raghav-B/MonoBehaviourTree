@@ -48,6 +48,10 @@ namespace MBTEditor
             }
         }
 
+        private bool isSelecting = false;
+        private Event selectStartEvent = null;
+        private readonly Color _selectBoxColor = new Color(0.16f, 0.19f, 0.5f, 0.2f);
+
         private void OnEnable()
         {
             // Read snap option
@@ -132,10 +136,31 @@ namespace MBTEditor
 
             PaintWindowToolbar();
 
+            PaintSelectionBox(Event.current);
+
             // Update selection and drag
             ProcessEvents(Event.current);
 
             if (GUI.changed) Repaint();
+        }
+
+        private void PaintSelectionBox(Event e) {
+            if (!isSelecting) {
+                return;
+            }
+            
+            if (currentHandle == null) {
+                Handles.BeginGUI();
+                Rect selectBox = new Rect(
+                    selectStartEvent.mousePosition.x, selectStartEvent.mousePosition.y,
+                    e.mousePosition.x - selectStartEvent.mousePosition.x,
+                    e.mousePosition.y - selectStartEvent.mousePosition.y
+                );
+                Handles.DrawSolidRectangleWithOutline(selectBox, _selectBoxColor, Color.gray);
+                Handles.EndGUI();
+
+                List<Node> nodesInBox = UpdateSelectionBoxNodes(selectBox);
+            }
         }
 
         private void PaintConnections(Event e)
@@ -357,9 +382,13 @@ namespace MBTEditor
                         e.Use();
                     }
                     break;
+
                 case EventType.MouseDrag:
-                    // Drag node, workspace or connection
-                    if (e.button == 0) {
+                    if (e.button == 0) { // Drag node or select multiple nodes
+                        if (isSelecting) {
+                            return;
+                        }
+                        
                         if (currentHandle != null) {
                             // Let PaintConnections draw lines
                         } else if (selectedNode != null) {
@@ -376,13 +405,29 @@ namespace MBTEditor
                             }
                             nodeMoved = true;
                         } else {
-                            workspaceOffset += Event.current.delta;
+                            // Multiple selection logic
+                            // Let paint select box draw
+                            if (!isSelecting) {
+                                isSelecting = true;
+                                selectStartEvent = new Event(e);
+                            }
                         }
+                        GUI.changed = true;
+                        e.Use();
+                    
+                    } else if (e.button == 2) { // Drag workspace
+                        workspaceOffset += Event.current.delta;
                         GUI.changed = true;
                         e.Use();
                     }
                     break;
+
                 case EventType.MouseUp:
+                    if (isSelecting) {
+                        isSelecting = false;
+                        selectStartEvent = null;
+                    }
+                    
                     if (currentHandle != null) {
                         TryConnectNodes(currentHandle, e.mousePosition);
                     }
@@ -414,6 +459,7 @@ namespace MBTEditor
                     currentHandle = null;
                     GUI.changed = true;
                     break;
+                
                 case EventType.ScrollWheel:
                     // Negative is zooming in, positive is zooming out. On my mouse, they seem
                     // to increment by 3 each time
@@ -526,6 +572,24 @@ namespace MBTEditor
                 }
             }
             return null;
+        }
+
+        private List<Node> UpdateSelectionBoxNodes(Rect selectBox) {
+            List<Node> nodesInBox = new List<Node>();
+            for (int i = 0; i < currentNodes.Length; i++)
+            {
+                // Get correct position of node with offset
+                Rect target = currentNodes[i].GetRect();
+                target.position *= zoomScale;
+                target.position += workspaceOffset;
+                if (selectBox.Overlaps(target, allowInverse: true)) {
+                    // nodesInBox.Add(currentNodes[i]);
+                    SelectNode(currentNodes[i]);
+                } else {
+                    DeselectNode(currentNodes[i]);
+                }
+            }
+            return nodesInBox;
         }
 
         private NodeHandle FindHandle(Vector2 mousePosition)
