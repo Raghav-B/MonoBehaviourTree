@@ -5,6 +5,7 @@ using UnityEditor.IMGUI.Controls;
 using MBT;
 using System;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace MBTEditor
 {    
@@ -340,7 +341,7 @@ namespace MBTEditor
             }
         }
 
-        private void ProcessEvents(Event e)
+        private async void ProcessEvents(Event e)
         {
             switch (e.type)
             {
@@ -377,11 +378,20 @@ namespace MBTEditor
                         e.Use();
 
                     } else if (e.button == 1) { // Right click
-                        Node node = FindNode(e.mousePosition);
-                        // Open proper context menu
-                        if (node != null) {
-                            OpenNodeMenu(e.mousePosition, node);
+                        int index = FindNodeIndex(e.mousePosition);
+                        if (index != -1) {
+                            if (selectedNodes.Count <= 1) {
+                                // Only deselect nodes if multiple nodes aren't selected
+                                DeselectAllNodes();
+                            }
+                            Node node = currentNodes[index];
+                            SelectNodeIndex(index);
+
+                            Vector2 pos = e.mousePosition;
+                            await Task.Delay(5);
+                            OpenNodeMenu(pos, node);
                         } else {
+                            // Open proper context menu
                             DeselectAllNodes();
                             OpenNodeFinder(new Rect(e.mousePosition.x, e.mousePosition.y, 1, 1));
                         }
@@ -533,12 +543,8 @@ namespace MBTEditor
         }
 
         private void SelectNodeIndex(int index) {
-            selectedNodes.TryAdd(index, currentNodes[index]);
-            SelectNode(currentNodes[index]);
-        }
-
-        private void SelectNode(Node node)
-        {
+            Node node = currentNodes[index];
+            selectedNodes.TryAdd(index, node);
             currentMBT.selectedEditorNode = node;
             currentMBTEditor.Repaint();
             node.selected = true;
@@ -547,12 +553,8 @@ namespace MBTEditor
         }
 
         private void DeselectNodeIndex(int index) {
+            Node node = currentNodes[index];
             selectedNodes.Remove(index);
-            DeselectNode(currentNodes[index]);
-        }
-
-        private void DeselectNode(Node node)
-        {
             currentMBT.selectedEditorNode = null;
             currentMBTEditor.Repaint();
             node.selected = false;
@@ -731,7 +733,7 @@ namespace MBTEditor
             return new Rect(rect.x + rect.width - 2, rect.y - 1, 20, 20);
         }
 
-        private void OpenNodeFinder(Rect rect, bool useRectPosition = true, NodeHandle handle = null)
+        private async void OpenNodeFinder(Rect rect, bool useRectPosition = true, NodeHandle handle = null)
         {
             // Store handle to connect later (null by default)
             dropdownHandleCache = handle;
@@ -741,6 +743,7 @@ namespace MBTEditor
             } else {
                 nodeDropdownTargetPosition = new Vector2(this.position.width/2, this.position.height/2) - workspaceOffset;
             }
+            await Task.Delay(5); // Delay to allow select/deselection to update
             // Open dropdown
             nodeDropdown.Show(rect);
         }
@@ -756,9 +759,10 @@ namespace MBTEditor
             if (copiedNode != null) {
                 genericMenu.AddItem(new GUIContent("Paste"), false, () => PasteNode());
             }
-            genericMenu.AddItem(new GUIContent("Delete Node"), false, () => DeleteNode(node)); 
-            
-            genericMenu.ShowAsContext();
+            genericMenu.AddItem(new GUIContent(selectedNodes.Count <= 1 ? "Delete Node" : "Delete Nodes"), 
+                false, () => DeleteNodes()
+            );
+            genericMenu.DropDown(new Rect(mousePosition.x, mousePosition.y, 1, 1));
         }
 
         void AddNode(ClassTypeDropdownItem item)
@@ -806,18 +810,21 @@ namespace MBTEditor
             copiedNode = null;
         }
 
-        private void DeleteNode(Node node)
+        private void DeleteNodes()
         {
             if (currentMBT == null) {
                 return;
             }
-            DeselectAllNodes();
             // Disconnect all children and parent
             Undo.SetCurrentGroupName("Delete Node");
-            DisconnectNodeChildren(node);
-            DisconnectNodeParent(node);
-            Undo.DestroyObjectImmediate(node);
-            // DestroyImmediate(node, true);
+            foreach (var keyVal in selectedNodes) {
+                Node node = keyVal.Value;
+                DisconnectNodeChildren(node);
+                DisconnectNodeParent(node);
+                Undo.DestroyObjectImmediate(node);
+                // DestroyImmediate(node, true);
+            }
+            DeselectAllNodes();
             UpdateSelection();
         }
 
